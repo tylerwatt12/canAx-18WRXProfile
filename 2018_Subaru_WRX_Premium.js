@@ -1,25 +1,45 @@
-var $rd = { };
-$rd.wpr = "";
-$rd.trns = { };
-$rd.esc = { };
-$rd.pdl = { };
-$rd.lok = { };
-$rd.dAjr = { };
-$rd.tSnl = { };
-$rd.stng = { };
-$rd.ngn = { };
-$rd.ltg = { };
-$rd.hvac = { };
-$rd.tmp = { };
-$rd.crz = { };
-$rd.spd = { };
-$rd.TPMS = { };
-$rd.vin;
-$rd.up = { };
-$rd.d = { };
 
 $vinParse = [];
+$avgGPHCnt = 1;
+$rd = { wpr: '0',
+  trns: { gear: 0, isRvse: '0' },
+  esc:
+   { FullAct: '0', VDCAct: '0', ESCAct: '0', TCSOff: '0', isBrk: '0' },
+  pdl: { accel: 0, brkPrs: 0, PBRK: '0' },
+  lok:
+   { Lock: '0', UnlockDriver: '0', UnlockAll: '0', BCMAwake: '0' },
+  dAjr: { TR: '0', DF: '0', PF: '0', PR: '0', DR: '0' },
+  tSnl: { Left: '0', Right: '0' },
+  stng: { pcnt: 0, whl: 0, tir: 0, ttlTq: 0, angTq: 0 },
+  ngn: { RPM: 0, tbody: 0, isOffAccl: '1', boost: 0 },
+  ltg:
+   { dimPos: 0,
+     dim: '0',
+     DRL: '0',
+     HL: '0',
+     HB: '0',
+     BRK: '0',
+     insClstrFullBright: '0',
+     fog: '0' },
+  hvac:
+   { system: 'off',
+     dispAct: '0' },
+  tmp: { oil: 0, clnt: 0 },
+  crz: { btnUp: '0', btnDn: '0', btnCncl: '0', active: '0' },
+  spd:
+   { MPH: 0,
+     avgMPH: 0,
+     wssFL: 0,
+     wssFR: 0,
+     wssRL: 0,
+     wssRR: 0,
+     wssAvg: 0 },
+  fuel: { avgMPG: 0, avgGPH: 0, MPG: 0, GPH: 0},
+  TPMS: { FL: 0, FR: 0, RL: 0, RR: 0 },
+  info: { vin: 'NODATA_____NODATA', my: 2018, make: 'SUBARU', model: 'WRX', trim: 'PREMIUM', loc: 'USDM', profile : '2018_Subaru_WRX_Premium.js'},
+  trip: { odo: 0, timeDisp: '0h 0\'', timeSec: 0, scrTime: Date.now(), scrTimeStart: Date.now(), scrOdo: 0, scrTrp: 0} };
 
+$rd.d = { };
 $rtnTimerArray = new Object();
 
 exports.addMessage = function($ch,$dt) {
@@ -33,7 +53,8 @@ exports.addMessage = function($ch,$dt) {
       break;
     case "0D1":
       $rd.pdl.brkPrs = dataDecode3($dt,"d",16,8,"b",0,1.20481927711,0,0);
-      $rd.spd.mph = dataDecode3($dt,"d",16,16,"l",0,0.0349521,0,0);
+      $rd.spd.MPH = dataDecode3($dt,"d",16,16,"l",0,0.0349521,0,0);
+      $rd.spd.avgMPH = $rd.trip.scrTrp/($rd.trip.scrTime/3600000);
       break;
     case "0D3":
       $escRaw = dataDecode3($dt,"b");
@@ -61,14 +82,16 @@ exports.addMessage = function($ch,$dt) {
       $rd.pdl.accel = dataDecode3($dt, "d", 0, 8, "b", 0, 0.392157, 0, 0);
       break;
     case "141":
+      /* Old Gear data, doesn't work reliably
       $gData = dataDecode3($dt, "d", 53, 3);
-      if($rd.trns.isReverse === "1"){
+      if($rd.trns.isRvse == "1"){
         $rd.trns.gear = "R";
       }else if($gData === 7){
         $rd.trns.gear = "N";
       }else if ($rd.ngn.isoffAccelerator !== "1" && $gData > 0) {
         $rd.trns.gear = $gData;
       }
+      */
       $rd.d.rev1 = dataDecode3($dt,"d",51,13,"l"); //byte 0/1(5bits) LE
       $rd.d.rev2 = dataDecode3($dt,"d",36,12,"l"); //byte 2/3(last 4bit) LE
       $dt = dataDecode3($dt,"b");
@@ -100,10 +123,9 @@ exports.addMessage = function($ch,$dt) {
       $rd.wpr = $hl.substr(57,1);
       $rd.d.D152_1 = $hl.substr(53,1); //lighting? washer spray?
       break;
-    case "154":
+    case "154": //56 bits returned
       $dt = dataDecode3($dt,"b");
-      //$rd.esc.isBraking = $dt.substr(61,1)
-      $rd.trns.isRvse = $dt.substr(62,1);
+      $rd.trns.isRvse = $dt.substr(54,1);
       break;
     case "280":
       $rd.d.D280_1 = dataDecode3($dt,"b",20,1);
@@ -178,21 +200,30 @@ exports.addMessage = function($ch,$dt) {
       $rd.hvac.dispAct = $hvr.substr(38,1); // IF CONTROLS WERE MODIFIED LAST 2 SECONDS
       break;
     case "282":
-      $rd.d.TempFuel0 = dataDecode3($dt,"d",0,8); // temp, or fuel? // FIX THIS
-      $rd.d.tempAmbient = dataDecode3($dt,"d",24,8); // temp, or fuel?
-      $rd.d.tempInlet = dataDecode3($dt,"d",32,8); // temp, or fuel?
+      $rd.d.TempFuel0 = dataDecode3($dt,"d",0,8,"b",0,1,-48); // temp, or fuel? // FIX THIS
+      $rd.d.tempAmbient = dataDecode3($dt,"d",24,8,"b",0,1,-48); // temp, or fuel? Used for AC AUTO, not triple display at top
+      $rd.d.tempInlet = dataDecode3($dt,"d",32,8,"b",0,1,-48); // temp, or fuel?
 
       $dt = dataDecode3($dt,"b");
-      $rd.d.driverSeatUnbukl = $dt.substr(47,1);
+      $rd.d.StbltDrvr = $dt.substr(47,1);
       $rd.tSnl.Left = $dt.substr(43,1);
       $rd.tSnl.Right = $dt.substr(42,1);
       break;
     case "360":
-      $rd.tmp.oil = dataDecode3($dt, "d", 16, 8, "b", -40, 1.8, 32, 0);
-      $rd.tmp.clnt = dataDecode3($dt, "d", 24, 8, "b", -40, 1.8, 32, 0);
-      $rd.ngn.boost = dataDecode3($dt, "d", 32, 8, "b", 0, 0.28571428571, -14, 1);
+      $rd.tmp.oil = dataDecode3($dt, "d", 16, 8, "b", -40, 1.8, 32,3);
+      $rd.tmp.clnt = dataDecode3($dt, "d", 24, 8, "b", -40, 1.8, 32,3);
+      $rd.ngn.boost = dataDecode3($dt, "d", 32, 8, "b", 0, 0.28571428571, -14,3);
       $rd.crz.active = dataDecode3($dt,"b",43,1);
-      $rd.d.FuelConsIns = dataDecode3($dt,"d",48,16,"l");
+      $rd.fuel.GPH = dataDecode3($dt,"d",48,16,"l",0,0.001);
+      $rd.fuel.avgGPH = (($rd.fuel.avgGPH*$avgGPHCnt)+$rd.fuel.GPH)/($avgGPHCnt+1); // used in calc of avg mpg
+      $avgGPHCnt++; //increment running average counter
+      if ($rd.fuel.GPH === 0) { // if using no gas
+      	$rd.fuel.MPG = ($rd.spd.MPH*10);	
+      }else{
+      	$rd.fuel.MPG = $rd.spd.MPH/$rd.fuel.GPH;
+      }
+      $rd.fuel.avgMPG = $rd.spd.avgMPH/$rd.fuel.avgGPH;
+      
       $dt = dataDecode3($dt,"b");
       //$rd.crz.active = $dt.substr(43,1); //Cruise On
       $rd.d.D360_3 = $dt.substr(50,1);
@@ -200,7 +231,15 @@ exports.addMessage = function($ch,$dt) {
       $rd.d.D360_5 = $dt.substr(54,1);
       break;
     case "361":
-      $rd.d.D361_1 = dataDecode3($dt,"b",4,4);
+      $rd.d.D361_1 = dataDecode3($dt,"d",4,4);
+      $gData = dataDecode3($dt,"d",4,4); // try and see if 4 bits is actually necessary. try 3?
+      if($rd.trns.isRvse == "1"){
+        $rd.trns.gear = "R";
+      }else if($gData == "0"){
+        $rd.trns.gear = "N";
+      }else{
+        $rd.trns.gear = $gData;
+      }
       break;
     case "362":
       break;
@@ -258,25 +297,27 @@ exports.addMessage = function($ch,$dt) {
       $rd.d.fuelCons = dataDecode3($dt,"d",51,13,"l");
       break;
     case "660":
-      $rd.up.sec = dataDecode3($dt,"d",48,16,"b",0,1,0,0)/10;
-      hours = Math.floor($rd.upSeconds / 3600);
-      $rd.up.sec %= 3600;
-      minutes = Math.floor($rd.upSeconds / 60);
-      $rd.up.disp = hours+"h "+minutes+"'";
+      $rd.trip.timeSec = dataDecode3($dt,"d",48,16,"b",0,0.1,0);
+      $rd.trip.timeDisp = HHMMSS($rd.trip.timeSec);
+      console.log($rd.trip.timeDisp);
+      $rd.trip.scrTime = Date.now()-$rd.trip.scrTimeStart; // time in ms since script load
       break;
     case "6D1":
-      $rd.d.TripOdo = dataDecode3($dt,"d",52,12,"l",0,1,0,0);
-      $rd.d.TripOdoFix = $rd.d.TripOdo*0.09047;
-      $rd.d.D6D1_2 = dataDecode3($dt,"d",8,8,"b",0,1,0,0); // troubleshoot this
+      $rd.trip.odo = dataDecode3($dt,"d",40,24,"l",0,0.1,0); // current full odometer
+      if ($rd.trip.scrOdo === 0) { // if script start odometer not set, set it to current
+        $rd.trip.scrOdo = $rd.trip.odo;
+      }
+      $rd.trip.scrTrp = ($rd.trip.odo-$rd.trip.scrOdo); //miles traveled since nodejs start
+      $rd.d.D6D1_2 = dataDecode3($dt,"d",8,8,"b",0,1,0); // troubleshoot this
       break;
     case "6FC":
       $byte = dataDecode3($dt,"d",40,8,"b",0,1,0,0);
       $letter = dataDecode3($dt,"d",48,8,"b",0,1,0,0);
       $vinParse[$byte] = String.fromCharCode($letter);
       if ($vinParse.join("").length === 17) {
-        $rd.vin = $vinParse.join("");
+        $rd.info.vin = $vinParse.join("");
       }else{
-        $rd.vin = "LOADING VIN "+$vinParse.join("").length+"/17";
+        $rd.info.vin = "LOADING VIN "+$vinParse.join("").length+"/17";
       }
       break;
   }
@@ -287,156 +328,124 @@ exports.addMessage = function($ch,$dt) {
   return $rd;
 }
 
+function HHMMSS($in) {
+	var sec_num = parseInt($in, 10); // don't forget the second param
+	var hours   = Math.floor(sec_num / 3600);
+	var minutes = Math.floor((sec_num - (hours * 3600)) / 60);
+	var seconds = sec_num - (hours * 3600) - (minutes * 60);
 
-// convert and scale function
-function dataDecode3($hD, $outTyp = "d", $ofsB = 0, $lenB = $hD.length * 4, $end = "b", $bias = 0, $sca = 1, $pbias = 0, $prec = -1) {
-  if ($end == "l") {
-    $hD = $hD.replace(/^(.(..)*)$/, "0$1").match(/../g).reverse().join("");
-  }
-  
-  $hD = hexToBin($hD).substr($ofsB, $lenB);
-  switch ($outTyp) {
+	if (hours   < 10) {hours   = "0"+hours;}
+	if (minutes < 10) {minutes = "0"+minutes;}
+	if (seconds < 10) {seconds = "0"+seconds;}
+	return hours+'h '+minutes+'\''+seconds+'"';
+}
+
+function dataDecode3(b, a, c, d, f, e, g, k, h) {
+  a = void 0 === a ? "d" : a;
+  c = void 0 === c ? 0 : c;
+  d = void 0 === d ? 4 * b.length : d;
+  e = void 0 === e ? 0 : e;
+  g = void 0 === g ? 1 : g;
+  k = void 0 === k ? 0 : k;
+  h = void 0 === h ? -1 : h;
+  "l" == (void 0 === f ? "b" : f) && (b = b.replace(/^(.(..)*)$/, "0$1").match(/../g).reverse().join(""));
+  b = hexToBin(b).substr(c, d);
+  switch(a) {
     case "sig":
-      $int = binToDec($hD);
-      $sigMax = binToDec($hD.replace(/(.)/g,"1"))+1;// store  max
-      if ($int >= 0.5*$sigMax) {$int = Math.abs($int - $sigMax+1);}else{$int = -$int;}
-      $hD = ($int + $bias) * $sca + $pbias;
-      if ($prec !== -1) {
-        $hD = Math.round($hD * Math.pow(10, $prec || 0)) / Math.pow(10, $prec || 0);
-      }
-      return $hD;
-      break;
+      return $int = binToDec(b), $sigMax = binToDec(b.replace(/(.)/g, "1")) + 1, $int = $int >= 0.5 * $sigMax ? Math.abs($int - $sigMax + 1) : -$int, b = ($int + e) * g + k, -1 !== h && (b = Math.round(b * Math.pow(10, h || 0)) / Math.pow(10, h || 0)), b;
     case "b":
-      return $hD;
-      break;
+      return b;
     case "h":
-      return binToHex($hD);
-      break;
+      return binToHex(b);
     case "d":
-      $hD = (binToDec($hD) + $bias) * $sca + $pbias;
-      if ($prec !== -1) {
-        $hD = Math.round($hD * Math.pow(10, $prec || 0)) / Math.pow(10, $prec || 0);
-      }
-      return $hD;
-      break;
+      return b = (binToDec(b) + e) * g + k, -1 !== h && (b = Math.round(b * Math.pow(10, h || 0)) / Math.pow(10, h || 0)), b;
     case "hd":
-      return binToHex($hD).replace(/(.{2})/g,"$1 ");
-      break;
+      return binToHex(b).replace(/(.{2})/g, "$1 ");
     case "bd":
-      return $hD.replace(/(.{8})/g,"$1 ");
+      return b.replace(/(.{8})/g, "$1 ");
+  }
+}
+function logBig(b, a, c) {
+  var d = Math.log(a);
+  $out = (Math.log(b) - d) / ((Math.log(c) - d) / (c - a)) + a;
+  return "-Infinity" == $out ? 0 : $out;
+}
+function logSmall(b, a, c) {
+  var d = Math.log(a);
+  $out = Math.exp(d + (Math.log(c) - d) / (c - a) * (b - a));
+  return "-Infinity" == $out ? 0 : $out;
+}
+function add(b, a, c) {
+  for (var d = [], f = Math.max(b.length, a.length), e = 0, g = 0; g < f || e;) {
+    e = e + (g < b.length ? b[g] : 0) + (g < a.length ? a[g] : 0), d.push(e % c), e = Math.floor(e / c), g++;
+  }
+  return d;
+}
+function multiplyByNumber(b, a, c) {
+  if (0 > b) {
+    return null;
+  }
+  if (0 == b) {
+    return [];
+  }
+  for (var d = [];;) {
+    b & 1 && (d = add(d, a, c));
+    b >>= 1;
+    if (0 === b) {
       break;
     }
-}
-//Log scale big first
-function logBig(position,min,max) {
-  var minv = Math.log(min);
-  var maxv = Math.log(max);
-  // calculate adjustment factor
-  var scale = (maxv-minv) / (max-min);
-  $out = (Math.log(position)-minv) / scale + min;
-  if ($out == "-Infinity") {
-    return 0;
-  }else{
-    return $out;
+    a = add(a, a, c);
   }
-  
+  return d;
 }
-//Log scale small first
-function logSmall(position,min,max) {
-  var minv = Math.log(min);
-  var maxv = Math.log(max);
-  // calculate adjustment factor
-  var scale = (maxv-minv) / (max-min);
-  $out = Math.exp(minv + scale*(position-min));
-  if ($out == "-Infinity") {
-    return 0;
-  }else{
-    return $out;
-  }
-}
-function add(x, y, base) {
-  var z = [];
-  var n = Math.max(x.length, y.length);
-  var carry = 0;
-  var i = 0;
-  while (i < n || carry) {
-    var xi = i < x.length ? x[i] : 0;
-    var yi = i < y.length ? y[i] : 0;
-    var zi = carry + xi + yi;
-    z.push(zi % base);
-    carry = Math.floor(zi / base);
-    i++;
-  }
-  return z;
-}
-function multiplyByNumber(num, x, base) {
-  if (num < 0) return null;
-  if (num == 0) return [];
-
-  var result = [];
-  var power = x;
-  while (true) {
-    if (num & 1) {
-      result = add(result, power, base);
+function parseToDigitsArray(b, a) {
+  for (var c = b.split(""), d = [], f = c.length - 1; 0 <= f; f--) {
+    var e = parseInt(c[f], a);
+    if (isNaN(e)) {
+      return null;
     }
-    num = num >> 1;
-    if (num === 0) break;
-    power = add(power, power, base);
+    d.push(e);
   }
-  return result;
+  return d;
 }
-function parseToDigitsArray(str, base) {
-  var digits = str.split('');
-  var ary = [];
-  for (var i = digits.length - 1; i >= 0; i--) {
-    var n = parseInt(digits[i], base);
-    if (isNaN(n)) return null;
-    ary.push(n);
+function convertBase(b, a, c) {
+  var d = parseToDigitsArray(b, a);
+  if (null === d) {
+    return null;
   }
-  return ary;
-}
-function convertBase(str, fromBase, toBase) {
-  var digits = parseToDigitsArray(str, fromBase);
-  if (digits === null) return null;
-  var outArray = [];
-  var power = [1];
-  for (var i = 0; i < digits.length; i++) {
-    // invariant: at this point, fromBase^i = power
-    if (digits[i]) {
-      outArray = add(outArray, multiplyByNumber(digits[i], power, toBase), toBase);
-    }
-    power = multiplyByNumber(fromBase, power, toBase);
+  b = [];
+  for (var f = [1], e = 0; e < d.length; e++) {
+    d[e] && (b = add(b, multiplyByNumber(d[e], f, c), c)), f = multiplyByNumber(a, f, c);
   }
-  var out = '';
-  for (var i = outArray.length - 1; i >= 0; i--) {
-    out += outArray[i].toString(toBase);
+  a = "";
+  for (e = b.length - 1; 0 <= e; e--) {
+    a += b[e].toString(c);
   }
-  if(!out && toBase=="10"){out = "0";} // make 0x00 return non null value
-  return out;
+  a || "10" != c || (a = "0");
+  return a;
 }
-function decToHex(decStr) {
-  var hex = convertBase(decStr, 10, 16);
-  return hex ? '0x' + hex : null;
+function decToHex(b) {
+  return (b = convertBase(b, 10, 16)) ? "0x" + b : null;
 }
-function decToBin(decStr) {
-  decStr = String(decStr);
-  console.log(decStr);
-  return convertBase(decStr, 10, 2).padStart(decStr.length*8, '0');
+function decToBin(b) {
+  b = String(b);
+  return convertBase(b, 10, 2).padStart(8 * b.length, "0");
 }
-function hexToDec(hexStr) {
-  hexStr = String(hexStr);
-  hexStr = hexStr.toLowerCase();
-  return parseInt(convertBase(hexStr, 16, 10));
+function hexToDec(b) {
+  b = String(b);
+  b = b.toLowerCase();
+  return parseInt(convertBase(b, 16, 10));
 }
-function hexToBin(hexStr) {
-  hexStr = String(hexStr);
-  if (hexStr.substring(0, 2) === '0x') hexStr = hexStr.substring(2);
-    hexStr = hexStr.toLowerCase();
-  return convertBase(hexStr, 16, 2).padStart(hexStr.length*4, '0');
+function hexToBin(b) {
+  b = String(b);
+  "0x" === b.substring(0, 2) && (b = b.substring(2));
+  b = b.toLowerCase();
+  return convertBase(b, 16, 2).padStart(4 * b.length, "0");
 }
-function binToHex(binStr) {
-  return convertBase(binStr, 2, 16).padStart(binStr.length/4, '0').toUpperCase();
+function binToHex(b) {
+  return convertBase(b, 2, 16).padStart(b.length / 4, "0").toUpperCase();
 }
-function binToDec(binStr) {
-  return parseInt(convertBase(binStr, 2, 10));
+function binToDec(b) {
+  return parseInt(convertBase(b, 2, 10));
 }
+;
