@@ -1,4 +1,10 @@
-
+/*
+  File: 2018_Subar_WRX_Premium.js
+  Author: Tyler Watthanaphand
+  License: GNU GPLv3
+  Notes: Driver spec file to decode CAN messages from candump into a JS object.
+  Note about little endian byte swapping: Passing data into dataDecode3 function as little endian, byte swapping is done first, then offset and length functions are performed.
+*/
 $vinParse = [];
 $avgGPHCnt = 1;
 $rd = { wpr: '0',
@@ -36,7 +42,7 @@ $rd = { wpr: '0',
      wssAvg: 0 },
   fuel: { avgMPG: 0, avgGPH: 0, MPG: 0, GPH: 0},
   TPMS: { FL: 0, FR: 0, RL: 0, RR: 0 },
-  info: { vin: 'NODATA_____NODATA', my: 2018, make: 'SUBARU', model: 'WRX', trim: 'PREMIUM', loc: 'USDM', profile : '2018_Subaru_WRX_Premium.js'},
+  info: { vin: 'LOADING VIN      ', my: 2018, make: 'SUBARU', model: 'WRX', trim: 'PREMIUM', loc: 'USDM', profile : '2018_Subaru_WRX_Premium.js'},
   trip: { odo: 0, timeDisp: '0h 0\'', timeSec: 0, scrTime: Date.now(), scrTimeStart: Date.now(), scrOdo: 0, scrTrp: 0} };
 
 $rd.d = { };
@@ -52,8 +58,8 @@ exports.addMessage = function($ch,$dt) {
       $rd.stng.tir = Math.round($rd.stng.percent * (180 * 2.7) / 14.4);
       break;
     case "0D1":
-      $rd.pdl.brkPrs = dataDecode3($dt,"d",16,8,"b",0,1.20481927711,0,0);
-      $rd.spd.MPH = dataDecode3($dt,"d",16,16,"l",0,0.0349521,0,0);
+      $rd.pdl.brkPrs = dataDecode3($dt,"d",16,8,"b",0,1.20481927711,0);
+      $rd.spd.MPH = dataDecode3($dt,"d",16,16,"l",0,0.0349521,0);
       $rd.spd.avgMPH = $rd.trip.scrTrp/($rd.trip.scrTime/3600000);
       break;
     case "0D3":
@@ -299,7 +305,6 @@ exports.addMessage = function($ch,$dt) {
     case "660":
       $rd.trip.timeSec = dataDecode3($dt,"d",48,16,"b",0,0.1,0);
       $rd.trip.timeDisp = HHMMSS($rd.trip.timeSec);
-      console.log($rd.trip.timeDisp);
       $rd.trip.scrTime = Date.now()-$rd.trip.scrTimeStart; // time in ms since script load
       break;
     case "6D1":
@@ -311,13 +316,15 @@ exports.addMessage = function($ch,$dt) {
       $rd.d.D6D1_2 = dataDecode3($dt,"d",8,8,"b",0,1,0); // troubleshoot this
       break;
     case "6FC":
-      $byte = dataDecode3($dt,"d",40,8,"b",0,1,0,0);
-      $letter = dataDecode3($dt,"d",48,8,"b",0,1,0,0);
-      $vinParse[$byte] = String.fromCharCode($letter);
-      if ($vinParse.join("").length === 17) {
-        $rd.info.vin = $vinParse.join("");
-      }else{
-        $rd.info.vin = "LOADING VIN "+$vinParse.join("").length+"/17";
+      if ($rd.info.vin.substr(0,11) === "LOADING VIN") { //prevents this bit of code from running forever needlessly. VIN's dont change while car is running.
+        $byte = dataDecode3($dt,"d",40,8,"b",0,1,0,0);
+        $letter = dataDecode3($dt,"d",48,8,"b",0,1,0,0);
+        $vinParse[$byte] = String.fromCharCode($letter);
+        if ($vinParse.join("").length === 17) {
+          $rd.info.vin = $vinParse.join("");
+        }else{
+          $rd.info.vin = "LOADING VIN "+$vinParse.join("").length+"/17";
+        }
       }
       break;
   }
@@ -340,7 +347,7 @@ function HHMMSS($in) {
 	return hours+'h '+minutes+'\''+seconds+'"';
 }
 
-function dataDecode3(b, a, c, d, f, e, g, k, h) {
+function dataDecode3(b, a, c, d, f, e, g, k, h) { //input,mode,offset,length,bit/little,pre,multiplier,post,avg
   a = void 0 === a ? "d" : a;
   c = void 0 === c ? 0 : c;
   d = void 0 === d ? 4 * b.length : d;
