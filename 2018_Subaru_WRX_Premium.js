@@ -11,6 +11,8 @@ $rd = { wpr: '0',
   trns: { gear: 0, isRvse: '0' },
   esc:
    { FullAct: '0', VDCAct: '0', ESCAct: '0', TCSOff: '0', isBrk: '0' },
+  sfty:
+   { StbltDrvr: '0' },
   pdl: { accel: 0, brkPrs: 0, PBRK: '0' },
   lok:
    { Lock: '0', UnlockDriver: '0', UnlockAll: '0', BCMAwake: '0' },
@@ -30,7 +32,7 @@ $rd = { wpr: '0',
   hvac:
    { system: 'off',
      dispAct: '0' },
-  tmp: { oil: 0, clnt: 0 },
+  tmp: { oil: 0, clnt: 0 , amb: 0},
   crz: { btnUp: '0', btnDn: '0', btnCncl: '0', active: '0' },
   spd:
    { MPH: 0,
@@ -43,7 +45,7 @@ $rd = { wpr: '0',
   fuel: { avgMPG: 0, avgGPH: 0, MPG: 0, GPH: 0},
   TPMS: { FL: 0, FR: 0, RL: 0, RR: 0 },
   info: { vin: 'LOADING VIN      ', my: 2018, make: 'SUBARU', model: 'WRX', trim: 'PREMIUM', loc: 'USDM', profile : '2018_Subaru_WRX_Premium.js'},
-  trip: { odo: 0, timeDisp: '0h 0\'', timeSec: 0, scrTime: Date.now(), scrTimeStart: Date.now(), scrOdo: 0, scrTrp: 0} };
+  trip: { odo: 0, timeDisp: '0h 0\'', timeSec: 0, scrTime: Date.now(), startTime: Date.now(), startOdo: 0, scrTrp: 0} };
 
 $rd.d = { };
 $rtnTimerArray = new Object();
@@ -54,8 +56,8 @@ exports.addMessage = function($ch,$dt) {
     case "002":
       // steering angle
       $rd.stng.pcnt = dataDecode3($dt,"sig",0,16,"b",0,0.000205,0,-1);
-      $rd.stng.whl = Math.round($rd.stng.percent*485);
-      $rd.stng.tir = Math.round($rd.stng.percent * (180 * 2.7) / 14.4);
+      $rd.stng.whl = Math.round($rd.stng.pcnt*485);
+      $rd.stng.tir = Math.round($rd.stng.pcnt * (180 * 2.7) / 14.4);
       break;
     case "0D1":
       $rd.pdl.brkPrs = dataDecode3($dt,"d",16,8,"b",0,1.20481927711,0);
@@ -207,11 +209,11 @@ exports.addMessage = function($ch,$dt) {
       break;
     case "282":
       $rd.d.TempFuel0 = dataDecode3($dt,"d",0,8,"b",0,1,-48); // temp, or fuel? // FIX THIS
-      $rd.d.tempAmbient = dataDecode3($dt,"d",24,8,"b",0,1,-48); // temp, or fuel? Used for AC AUTO, not triple display at top
+      $rd.tmp.amb = dataDecode3($dt,"d",24,8,"b",0,1,-48); // temp, or fuel? Used for AC AUTO, not triple display at top
       $rd.d.tempInlet = dataDecode3($dt,"d",32,8,"b",0,1,-48); // temp, or fuel?
 
       $dt = dataDecode3($dt,"b");
-      $rd.d.StbltDrvr = $dt.substr(47,1);
+      $rd.sfty.StbltDrvr = $dt.substr(47,1);
       $rd.tSnl.Left = $dt.substr(43,1);
       $rd.tSnl.Right = $dt.substr(42,1);
       break;
@@ -305,14 +307,14 @@ exports.addMessage = function($ch,$dt) {
     case "660":
       $rd.trip.timeSec = dataDecode3($dt,"d",48,16,"b",0,0.1,0);
       $rd.trip.timeDisp = HHMMSS($rd.trip.timeSec);
-      $rd.trip.scrTime = Date.now()-$rd.trip.scrTimeStart; // time in ms since script load
+      $rd.trip.scrTime = Date.now()-$rd.trip.startTime; // time in ms since script load
       break;
     case "6D1":
       $rd.trip.odo = dataDecode3($dt,"d",40,24,"l",0,0.1,0); // current full odometer
-      if ($rd.trip.scrOdo === 0) { // if script start odometer not set, set it to current
-        $rd.trip.scrOdo = $rd.trip.odo;
+      if ($rd.trip.startOdo === 0) { // if script start odometer not set, set it to current
+        $rd.trip.startOdo = $rd.trip.odo;
       }
-      $rd.trip.scrTrp = ($rd.trip.odo-$rd.trip.scrOdo); //miles traveled since nodejs start
+      $rd.trip.scrTrp = ($rd.trip.odo-$rd.trip.startOdo); //miles traveled since nodejs start
       $rd.d.D6D1_2 = dataDecode3($dt,"d",8,8,"b",0,1,0); // troubleshoot this
       break;
     case "6FC":
